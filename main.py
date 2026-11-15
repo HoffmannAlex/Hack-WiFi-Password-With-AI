@@ -119,7 +119,7 @@ sys.path.extend([
 from core.wifi_scanner import WiFiScanner
 from core.packet_capturer import HandshakeCapturer
 from core.deauth_attacker import DeauthAttacker
-from core.ai_password_cracker import AICrackEngine
+from core.custom_cracker_engine import CustomCrackEngine
 from core.security_analyzer import SecurityAnalyzer
 from hardware.adapter_manager import AdapterManager
 from hardware.monitor_mode import MonitorMode
